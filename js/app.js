@@ -37,17 +37,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 🌟 全自动动态同步大炮：网页启动时自动剥离旧内存，强行同步 Gist 最新外链
     async function injectGistStickers() {
         try {
-            /* 🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟
-               【更 换 表 情 包 Gist 网 址 的 位 置】：以后有更新直接修改下面这一行的链接即可！
-               🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟 */
             let myStickerGistUrl = 'https://gist.githubusercontent.com/yvainewen/9ed769a74214b6b52f5dd44b2bb4638c/raw/stickers.json';
             
             let response = await fetch(myStickerGistUrl, { cache: 'no-store' }); 
             if (response.ok) {
                 let jsonReceived = await response.json();
                 
-                // 🌀【核心破局 · 上帝全景递归扫描法】：
-                // 彻底无视外部包裹是数组还是对象，只要底层有任意以 http 开头的长网址字符串，通通碾压式抓取归位！
                 function extractUrlsRecursively(node) {
                     let results = [];
                     if (!node) return results;
@@ -69,9 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 
                 let allUrls = extractUrlsRecursively(jsonReceived);
-                let cleanList = [...new Set(allUrls)]; // 指针级去重机制
+                let cleanList = [...new Set(allUrls)];
                 
-                // 🔥【物理防爆安全锁】：采用原地清空再推入的方式，完美避开 const 带来的赋值死锁报错
                 if (typeof stickerLibrary !== 'undefined' && Array.isArray(stickerLibrary)) {
                     stickerLibrary.length = 0;
                     stickerLibrary.push(...cleanList);
@@ -86,9 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     window.myStickerLibrary = cleanList;
                 }
                 
-                // 挂载全局影子代理
                 window._stickerLibrary = window.stickerLibrary;
-                
                 console.log('✓ 赛博记忆：已成功同步 Gist 永久外链表情库，共计 ' + cleanList.length + ' 个！');
             }
         } catch(e) {
@@ -263,10 +255,10 @@ window.addEventListener('load', function() {
 
 
 // ==========================================
-// 🚀 以下是为你无缝拼接恢复的原版遗失功能！
+// 🚀 以下是原版留存功能兼容层
 // ==========================================
 
-// 🚀 戳一戳双向包裹器
+// 1. 戳一戳双向包裹器
 (function() {
     var MY_SYM_KEY   = 'pokeSym_my'; var PTR_SYM_KEY  = 'pokeSym_partner';
     var MY_CUST_KEY  = 'pokeSym_my_custom'; var PTR_CUST_KEY = 'pokeSym_partner_custom';
@@ -290,14 +282,14 @@ window.addEventListener('load', function() {
     window._sanitizePokeTextForDisplay = s => String(s||'').replace(/[\u2600-\u27BF\u{1F300}-\u{1FAFF}]/gu, '').trim();
 })();
 
-// 🚀 给原生遗留全局变量进行硬核托底防死锁
+// 2. 原生遗留全局变量托底
 if (typeof safeGetItem === 'undefined') {
     window.safeGetItem = function(k) { try{return localStorage.getItem(k)}catch(e){return null} };
     window.safeSetItem = function(k,v) { try{localStorage.setItem(k,typeof v==='object'?JSON.stringify(v):v)}catch(e){} };
     window.safeRemoveItem = function(k) { try{localStorage.removeItem(k)}catch(e){} };
 }
 
-// 🚀 恢复原版兼容的推送授权按钮触发函数
+// 3. 原版兼容的推送授权按钮触发函数
 window.requestApplePushPermission = async function() {
     const pushToggle = document.getElementById('push-notification-toggle');
     const knob = pushToggle ? pushToggle.querySelector('.setting-pill-knob') : null;
@@ -335,9 +327,20 @@ window.requestApplePushPermission = async function() {
     }
 };
 
-// 页面加载时同步设置面板中的开关状态
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
+// 4. 页面加载时同步设置面板中的开关状态及原版通知逻辑
+window.addEventListener('load', function() {
+    setTimeout(async () => {
+        if ('Notification' in window && Notification.permission === 'default') {
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    if (typeof showNotification === 'function') showNotification('已开启系统通知，收到消息时会提醒你', 'success', 3000);
+                }
+            } catch(e) {
+                console.warn('通知权限请求失败:', e);
+            }
+        }
+
         if ('Notification' in window && Notification.permission === 'granted') {
             const pushToggle = document.getElementById('push-notification-toggle');
             const knob = pushToggle ? pushToggle.querySelector('.setting-pill-knob') : null;
@@ -346,5 +349,5 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(knob) knob.style.left = '23px';
             }
         }
-    }, 1000);
-});
+    }, 3000);
+}, { once: true });
