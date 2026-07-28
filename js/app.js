@@ -193,17 +193,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         })();
 
-        setTimeout(async () => {
-            if ('Notification' in window && Notification.permission === 'default') {
-                try {
-                    const permission = await Notification.requestPermission();
-                    if (permission === 'granted') {
-                        showNotification('已开启系统通知，收到消息时会提醒你', 'success', 3000);
-                    }
-                } catch(e) { console.warn('通知权限请求失败:', e); }
-            }
-        }, 3000);
-
     } catch (err) {
         console.error('严重初始化错误:', err);
         updateLoader('加载遇到问题，已强制进入...', '100%');
@@ -249,14 +238,33 @@ window.addEventListener('load', function() {
     setTimeout(function() {
         try {
             if (localStorage.getItem('dailyGreetingShown') === new Date().toDateString()) return;
-            try { if (typeof checkPartnerDailyMood === 'function') checkPartnerDailyMood(); } catch(e2) {}
+            try { if (typeof checkPartnerDailyMood === 'function') checkPartnerDailyMood(); } catch(e2) { console.warn('checkPartnerDailyMood error:', e2); }
             if (typeof _buildDailyGreeting === 'function') _buildDailyGreeting();
-            var modal = document.getElementById('daily-greeting-modal');
-            if (modal) modal.classList.remove('hidden');
-            localStorage.setItem('dailyGreetingShown', new Date().toDateString());
-        } catch(e) {}
+            if (window.localforage && window.APP_PREFIX) {
+                localforage.getItem(window.APP_PREFIX + 'tour_seen').then(function(seen) {
+                    if (seen) {
+                        var modal = document.getElementById('daily-greeting-modal');
+                        if (modal) modal.classList.remove('hidden');
+                        localStorage.setItem('dailyGreetingShown', new Date().toDateString());
+                    }
+                }).catch(function() {
+                    var modal = document.getElementById('daily-greeting-modal');
+                    if (modal) modal.classList.remove('hidden');
+                    localStorage.setItem('dailyGreetingShown', new Date().toDateString());
+                });
+            } else {
+                var modal = document.getElementById('daily-greeting-modal');
+                if (modal) modal.classList.remove('hidden');
+                localStorage.setItem('dailyGreetingShown', new Date().toDateString());
+            }
+        } catch(e) { console.warn('Daily greeting timing error:', e); }
     }, 4500);
 }, { once: true });
+
+
+// ==========================================
+// 🚀 以下是为你无缝拼接恢复的原版遗失功能！
+// ==========================================
 
 // 🚀 戳一戳双向包裹器
 (function() {
@@ -288,3 +296,112 @@ if (typeof safeGetItem === 'undefined') {
     window.safeSetItem = function(k,v) { try{localStorage.setItem(k,typeof v==='object'?JSON.stringify(v):v)}catch(e){} };
     window.safeRemoveItem = function(k) { try{localStorage.removeItem(k)}catch(e){} };
 }
+
+// 🚀 专治苹果拦截：全局推送授权唤醒大炮
+window.requestApplePushPermission = async function() {
+    const pushToggle = document.getElementById('push-notification-toggle');
+    const knob = pushToggle ? pushToggle.querySelector('.setting-pill-knob') : null;
+
+    if (!('Notification' in window)) {
+        alert('❌ 当前浏览器不支持推送通知，请确保使用 iOS 16.4+ 且已将网页添加到主屏幕。');
+        return;
+    }
+
+    if (Notification.permission === 'granted') {
+        alert('✨ 推送已在后台运行！\n如需彻底关闭，请前往手机系统设置 -> Safari/此应用 里关闭通知。');
+        if (pushToggle) {
+            pushToggle.style.background = 'var(--accent-color)';
+            if(knob) knob.style.left = '23px';
+        }
+    } else if (Notification.permission === 'denied') {
+        alert('🛑 推送权限已被系统永久拒绝。\n请前往手机系统设置，找到此网页App，手动允许通知。');
+    } else {
+        // 核心：由用户的点击直接触发，苹果才会弹框！
+        try {
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                if (pushToggle) {
+                    pushToggle.style.background = 'var(--accent-color)';
+                    if(knob) knob.style.left = '23px';
+                }
+                if (typeof showNotification === 'function') {
+                    showNotification('✅ 后台消息推送已成功开启！', 'success');
+                } else {
+                    alert('✅ 后台消息推送已成功开启！');
+                }
+            }
+        } catch(e) {
+            console.warn('请求推送权限出错:', e);
+        }
+    }
+};
+
+// 页面加载时，静默检查当前授权状态，并点亮开关
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            const pushToggle = document.getElementById('push-notification-toggle');
+            const knob = pushToggle ? pushToggle.querySelector('.setting-pill-knob') : null;
+            if (pushToggle) {
+                pushToggle.style.background = 'var(--accent-color)';
+                if(knob) knob.style.left = '23px';
+            }
+        }
+    }, 1000);
+});
+
+// 🔔 真正的系统推送引擎：拦截梦角的新消息并推送到手机通知栏
+document.addEventListener('DOMContentLoaded', () => {
+    // 设置一个定时器，确保原有的 addMessage 函数已经加载完毕
+    setTimeout(() => {
+        if (typeof window.addMessage === 'function' && !window._systemPushHooked) {
+            const originalAddMessage = window.addMessage;
+            
+            // 劫持系统的“添加消息”函数
+            window.addMessage = function(msg) {
+                // 1. 先照常把消息显示在聊天界面里
+                originalAddMessage.apply(this, arguments);
+
+                // 2. 判断是否需要触发手机横幅推送：
+                // 条件：有消息 + 消息是对方发的 + 手机锁屏或在其他App(后台) + 通知权限已开启
+                if (msg && msg.sender !== 'user' && msg.type !== 'system') {
+                    if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
+                        
+                        // 提取通知显示的文字
+                        let notifBody = msg.text || '';
+                        if (msg.image) notifBody = '[图片]';
+                        if (msg.type === 'voice') notifBody = '[语音]';
+                        
+                        const partnerName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+                        const notifTitle = partnerName + ' 发来了一条新消息';
+
+                        // 3. 苹果 iOS PWA 专属的高级推送通道 (Service Worker)
+                        if (navigator.serviceWorker) {
+                            navigator.serviceWorker.getRegistration().then(function(reg) {
+                                if (reg && reg.showNotification) {
+                                    // iOS 必须用这个方法才能在后台弹出横幅
+                                    reg.showNotification(notifTitle, {
+                                        body: notifBody,
+                                        icon: './apple-touch-icon.png',
+                                        tag: 'chat-message',
+                                        renotify: true
+                                    });
+                                } else {
+                                    // 备用通道
+                                    new Notification(notifTitle, { body: notifBody, icon: './apple-touch-icon.png' });
+                                }
+                            }).catch(function() {
+                                new Notification(notifTitle, { body: notifBody, icon: './apple-touch-icon.png' });
+                            });
+                        } else {
+                            // PC或安卓的普通通道
+                            new Notification(notifTitle, { body: notifBody, icon: './apple-touch-icon.png' });
+                        }
+                    }
+                }
+            };
+            window._systemPushHooked = true;
+            console.log('✅ 全局消息推送拦截器已挂载！');
+        }
+    }, 2000);
+});
